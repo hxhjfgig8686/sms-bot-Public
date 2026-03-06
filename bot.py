@@ -1,6 +1,6 @@
 import requests
-import re
 import time
+import re
 
 BASE_URL = "https://www.ivasms.com"
 
@@ -10,84 +10,89 @@ PASSWORD = "Mohammed Saeed 123"
 BOT_TOKEN = "8325061391:AAESPAfQ93gf79feMa8YgRMCOgTSHxGnu40"
 CHAT_ID = "-1003745034804"
 
+session = requests.Session()
 
-def send_telegram(text):
+
+def login():
+
+    r = session.get(BASE_URL + "/login")
+
+    token = ""
+    if 'name="_token"' in r.text:
+        token = r.text.split('name="_token" value="')[1].split('"')[0]
+
+    payload = {
+        "email": EMAIL,
+        "password": PASSWORD,
+        "_token": token
+    }
+
+    r = session.post(BASE_URL + "/login", data=payload)
+
+    return "/portal" in r.url
+
+
+def get_sms():
+
+    url = BASE_URL + "https://www.ivasms.com/portal/live/my_sms"
+
+    r = session.get(url)
+
+    return r.json()
+
+
+def extract_otp(text):
+
+    m = re.search(r'\d{4,6}', text)
+
+    if m:
+        return m.group()
+
+    return None
+
+
+def send_telegram(msg):
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
     data = {
         "chat_id": CHAT_ID,
-        "text": text
+        "text": msg
     }
 
     requests.post(url, data=data)
 
 
-class IvaSMS:
+print("IVASMS BOT STARTED")
 
-    def __init__(self, email, password):
-        self.email = email
-        self.password = password
-        self.session = requests.Session()
+seen = set()
 
-    def login(self):
-
-        login_url = BASE_URL + "/login"
-
-        r = self.session.get(login_url)
-
-        token = ""
-        if 'name="_token"' in r.text:
-            token = r.text.split('name="_token" value="')[1].split('"')[0]
-
-        payload = {
-            "email": self.email,
-            "password": self.password,
-            "_token": token
-        }
-
-        r = self.session.post(login_url, data=payload)
-
-        return "/portal" in r.url
-
-    def get_sms(self):
-
-        url = BASE_URL + "/portal/live/my_sms"
-
-        r = self.session.get(url)
-
-        return r.text
-
-
-def extract_codes(text):
-
-    return re.findall(r"\b\d{4,6}\b", text)
-
-
-client = IvaSMS(EMAIL, PASSWORD)
-
-if client.login():
-
-    print("Login OK")
-
-    seen = set()
+if login():
 
     while True:
 
-        sms = client.get_sms()
+        data = get_sms()
 
-        codes = extract_codes(sms)
+        for sms in data:
 
-        for code in codes:
+            number = sms.get("number", "")
+            message = sms.get("sms", "")
 
-            if code not in seen:
+            otp = extract_otp(message)
 
-                msg = f"OTP Code: {code}"
+            if otp and otp not in seen:
 
-                print(msg)
+                text = f"""
+🚀 NEW OTP
 
-                send_telegram(msg)
+📞 Number: {number}
+🔑 Code: {otp}
+"""
 
-                seen.add(code)
+                send_telegram(text)
 
-        time.sleep(5)
+                print("OTP SENT:", otp)
+
+                seen.add(otp)
+
+        time.sleep(3)
